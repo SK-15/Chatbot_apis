@@ -1,7 +1,4 @@
-from supabase import create_client, Client
-from modules.config import settings
-
-supabase: Client = create_client(settings.supabase_url, settings.supabase_key)
+from modules.database import supabase
 
 async def sign_up_user(email: str, password: str):
     return supabase.auth.sign_up({"email": email, "password": password})
