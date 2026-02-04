@@ -71,3 +71,21 @@ async def save_chat_message(user_id: str, thread_id: str, prompt: str, response:
     except Exception as e:
         print(f"Error saving chat: {e}")
         return False
+
+async def delete_thread(user_id: str, thread_id: str):
+    """
+    Delete a specific thread and its chats.
+    """
+    try:
+        # Verify ownership and delete in one go if RLS allows, 
+        # or just attempt delete which will fail/count 0 if ID doesn't match RLS policy (if configured)
+        # or we explicitly filter by user_id
+        response = supabase.table("threads").delete().eq("id", thread_id).eq("user_id", user_id).execute()
+        
+        # Check if any row was deleted (response.data should be a list of deleted rows)
+        if response.data:
+            return True
+        return False
+    except Exception as e:
+        print(f"Error deleting thread: {e}")
+        return False

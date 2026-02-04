@@ -162,6 +162,25 @@ Get all chat messages for a specific thread.
         }
         ```
 
+### 7. Delete Thread
+Delete a specific thread and all associated messages.
+
+*   **URL**: `/threads/{thread_id}`
+*   **Method**: `DELETE`
+*   **Headers**:
+    *   `Authorization: Bearer <access_token>`
+*   **Success Response**:
+    *   **Code**: 200 OK
+    *   **Content**:
+        ```json
+        {
+          "message": "Thread deleted successfully"
+        }
+        ```
+*   **Error Response**:
+    *   **Code**: 404 Not Found
+    *   **Code**: 401 Unauthorized
+    *   **Code**: 500 Internal Server Error
 ---
 
 ## Testing with cURL
@@ -207,6 +226,12 @@ curl -X GET http://localhost:8000/threads \
 ### Get Chats for Thread
 ```bash
 curl -X GET http://localhost:8000/threads/<THREAD_ID>/chats \
+     -H "Authorization: Bearer <TOKEN>"
+```
+
+### Delete Thread
+```bash
+curl -X DELETE http://localhost:8000/threads/<THREAD_ID> \
      -H "Authorization: Bearer <TOKEN>"
 ```
 

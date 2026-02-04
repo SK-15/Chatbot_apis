@@ -1,9 +1,10 @@
 from fastapi import FastAPI, HTTPException, Depends, Header
+import asyncio
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from modules.auth import sign_up_user, login_user, get_user
-from modules.chat import get_user_threads, get_thread_chats, create_thread, save_chat_message
+from modules.chat import get_user_threads, get_thread_chats, create_thread, save_chat_message, delete_thread
 from modules.llm import stream_openai, stream_gemini
 
 app = FastAPI(title="Supabase LLM Chatbot API")
@@ -94,12 +95,17 @@ async def chat(request: ChatRequest, authorization: str = Header(None)):
         else:
             generator_func = stream_openai(request.prompt)
             
-        async for chunk in generator_func:
-            full_response += chunk
-            yield chunk
-            
-        # Save persistence after stream is done
-        await save_chat_message(user_id, request.thread_id, request.prompt, full_response)
+        try:
+            async for chunk in generator_func:
+                full_response += chunk
+                yield chunk
+        except Exception as e:
+            print(f"Stream error: {e}")
+        finally:
+            # Save persistence after stream is done or interrupted
+            if full_response:
+                # Use asyncio.create_task to ensure it runs even if request is cancelled
+                asyncio.create_task(save_chat_message(user_id, request.thread_id, request.prompt, full_response))
 
     return StreamingResponse(generate_and_save(), media_type="text/event-stream")
 
@@ -135,6 +141,29 @@ async def get_chats(thread_id: str, authorization: str = Header(None)):
         # In a real app we might verify thread ownership here or rely on RLS
         chats = await get_thread_chats(user_id, thread_id)
         return {"chats": chats}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.delete("/threads/{thread_id}")
+async def delete_thread_endpoint(thread_id: str, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    
+    token = authorization.split(" ")[1]
+    try:
+        user_res = await get_user(token)
+        if not user_res.user:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        
+        user_id = user_res.user.id
+        success = await delete_thread(user_id, thread_id)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Thread not found or could not be deleted")
+            
+        return {"message": "Thread deleted successfully"}
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
