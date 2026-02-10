@@ -6,3 +6,6 @@ pydantic-settings
 openai
 google-generativeai
 python-multipart
+ddgs
+beautifulsoup4
+requests

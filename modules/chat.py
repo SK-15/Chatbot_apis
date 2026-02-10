@@ -17,13 +17,15 @@ async def get_thread_chats(user_id: str, thread_id: str):
     Ensures the thread belongs to the user.
     """
     try:
-        # First verify thread ownership (optional but good security practice, 
-        # though RLS should handle it if set up correctly. We'll do a join or check first).
-        # Depending on RLS, simple select on chat_history with thread_id might be enough 
-        # if chat_history also has user_id and RLS checks it. 
-        # Use simpler approach assuming user can only access their own data via RLS or filter.
+        # First verify thread ownership
+        thread_response = supabase.table("threads").select("id").eq("id", thread_id).eq("user_id", user_id).execute()
         
-        response = supabase.table("chat_history").select("id, query, response, created_at").eq("thread_id", thread_id).eq("user_id", user_id).order("created_at", desc=False).execute()
+        if not thread_response.data:
+            # Thread doesn't exist or doesn't belong to the user
+            return []
+        
+        # Fetch chats for the verified thread
+        response = supabase.table("chat_history").select("id, query, response, created_at").eq("thread_id", thread_id).order("created_at", desc=False).execute()
         return response.data
     except Exception as e:
         print(f"Error fetching chats: {e}")
@@ -54,7 +56,7 @@ async def save_chat_message(user_id: str, thread_id: str, prompt: str, response:
     try:
         # Save chat message
         supabase.table("chat_history").insert({
-            "user_id": user_id,
+            # user_id is not in the schema anymore
             "thread_id": thread_id,
             "query": prompt,
             "response": response
@@ -68,4 +70,22 @@ async def save_chat_message(user_id: str, thread_id: str, prompt: str, response:
         return True
     except Exception as e:
         print(f"Error saving chat: {e}")
+        return False
+
+async def delete_thread(user_id: str, thread_id: str):
+    """
+    Delete a specific thread and its chats.
+    """
+    try:
+        # Verify ownership and delete in one go if RLS allows, 
+        # or just attempt delete which will fail/count 0 if ID doesn't match RLS policy (if configured)
+        # or we explicitly filter by user_id
+        response = supabase.table("threads").delete().eq("id", thread_id).eq("user_id", user_id).execute()
+        
+        # Check if any row was deleted (response.data should be a list of deleted rows)
+        if response.data:
+            return True
+        return False
+    except Exception as e:
+        print(f"Error deleting thread: {e}")
         return False
