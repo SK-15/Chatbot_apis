@@ -6,6 +6,7 @@ from pydantic import BaseModel
 from modules.auth import sign_up_user, login_user, get_user
 from modules.chat import get_user_threads, get_thread_chats, create_thread, save_chat_message, delete_thread
 from modules.llm import stream_openai, stream_gemini
+from modules.websearch import web_search_task
 
 app = FastAPI(title="Supabase LLM Chatbot API")
 
@@ -28,6 +29,9 @@ class ChatRequest(BaseModel):
 
 class NewChatRequest(BaseModel):
     title: str = "New Chat"
+
+class WebSearchRequest(BaseModel):
+    query: str
 
 @app.post("/signup")
 async def signup(request: AuthRequest):
@@ -164,6 +168,23 @@ async def delete_thread_endpoint(thread_id: str, authorization: str = Header(Non
         return {"message": "Thread deleted successfully"}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/websearch")
+async def websearch(request: WebSearchRequest, authorization: str = Header(None)):
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Missing or invalid token")
+    
+    token = authorization.split(" ")[1]
+    try:
+        user_res = await get_user(token)
+        if not user_res.user:
+            raise HTTPException(status_code=401, detail="Invalid session")
+        
+        # Perform web search
+        answer = await web_search_task(request.query)
+        return {"answer": answer}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
