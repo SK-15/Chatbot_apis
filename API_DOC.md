@@ -803,6 +803,7 @@ Records a marketing-site event — a page visit or a download button click — t
     *   `Content-Type: application/json`
     *   `Authorization: Bearer <access_token>` — *optional*. If a valid token is sent, `user_id` is attached to the event. An invalid token is **ignored**, not rejected.
 *   **Rate Limit**: 120 requests / minute per IP.
+*   **Sources**: the marketing site sends `source: "web"`; the desktop app sends `source: "app"` with its `app_version` and a Bearer token, so app events attach to `user_id`.
 *   **Request Body**:
     ```json
     {
@@ -820,10 +821,14 @@ Records a marketing-site event — a page visit or a download button click — t
       "timezone": "Asia/Kolkata",
       "screen_w": 1920,
       "screen_h": 1080,
-      "meta": {}
+      "meta": {},
+      "source": "web",
+      "app_version": null
     }
     ```
-    *   `event`: **Required**. One of `page_view` or `download_click`. Anything else is rejected.
+    *   `event`: **Required**. Web: `page_view`, `download_click`. Desktop app: `app_launch`, `session_start`, `session_end`, `answer_requested`, `screen_analysed`, `quota_exceeded`, `upgrade_clicked`. Anything else is rejected.
+    *   `source`: `web` (default) or `app`. Anything else is rejected.
+    *   `app_version`: Desktop app version, e.g. `1.0.3`. Ignored for web events.
     *   `visitor_id`: Browser-generated UUID kept in `localStorage` — stable across visits.
     *   `session_id`: Browser-generated UUID kept in `sessionStorage` — one per tab session.
     *   `meta`: Free-form JSON. The download button sends `{ "href": ..., "label": ..., "id": ... }`.

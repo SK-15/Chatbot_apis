@@ -38,6 +38,7 @@ from modules.interview import (
 from modules.launch_signup import insert_launch_signup
 from modules.analytics import (
     ALLOWED_EVENTS,
+    ALLOWED_SOURCES,
     insert_site_event,
     update_event_geo,
 )
@@ -184,7 +185,7 @@ class LaunchSignupRequest(BaseModel):
 
 
 class TrackEventRequest(BaseModel):
-    event: str = Field(..., description="One of: page_view, download_click")
+    event: str = Field(..., description="Web: page_view, download_click. App: app_launch, session_start, session_end, answer_requested, screen_analysed, quota_exceeded, upgrade_clicked.")
     path: Optional[str] = None
     referrer: Optional[str] = None
     visitor_id: Optional[str] = None
@@ -199,6 +200,8 @@ class TrackEventRequest(BaseModel):
     screen_w: Optional[int] = None
     screen_h: Optional[int] = None
     meta: Optional[dict] = None
+    source: Optional[str] = Field("web", description="One of: web, app")
+    app_version: Optional[str] = None
 
 
 class EndSessionRequest(BaseModel):
@@ -400,6 +403,9 @@ async def track_site_event(
     """
     Record a marketing-site event (page view or download button click).
 
+    Serves both the marketing site (`source=web`) and the desktop app
+    (`source=app`).
+
     Public + anonymous: no auth required. If a Bearer token happens to be
     present it is attached to the event, but an invalid one is ignored rather
     than rejected — tracking must never break the page.
@@ -409,6 +415,13 @@ async def track_site_event(
         raise HTTPException(
             status_code=422,
             detail=f"Unknown event '{event}'. Allowed: {', '.join(ALLOWED_EVENTS)}",
+        )
+
+    source = (body.source or "web").strip()
+    if source not in ALLOWED_SOURCES:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown source '{source}'. Allowed: {', '.join(ALLOWED_SOURCES)}",
         )
 
     ip = _client_ip(request)
@@ -434,6 +447,8 @@ async def track_site_event(
             screen_w=body.screen_w,
             screen_h=body.screen_h,
             meta=body.meta,
+            source=source,
+            app_version=body.app_version,
         )
     except Exception:
         logger.exception("track event insert failed (event=%s)", event)

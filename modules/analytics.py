@@ -9,7 +9,23 @@ from modules.database import get_pool
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_EVENTS = ("page_view", "download_click")
+# Marketing-site events.
+WEB_EVENTS = ("page_view", "download_click")
+
+# Desktop-app events.
+APP_EVENTS = (
+    "app_launch",
+    "session_start",
+    "session_end",
+    "answer_requested",
+    "screen_analysed",
+    "quota_exceeded",
+    "upgrade_clicked",
+)
+
+ALLOWED_EVENTS = WEB_EVENTS + APP_EVENTS
+
+ALLOWED_SOURCES = ("web", "app")
 
 GEO_LOOKUP_URL = "http://ip-api.com/json/{ip}?fields=status,country,regionName,city"
 GEO_CACHE_TTL_SECONDS = 24 * 60 * 60
@@ -46,6 +62,8 @@ async def insert_site_event(
     screen_w: int | None = None,
     screen_h: int | None = None,
     meta: dict | None = None,
+    source: str = "web",
+    app_version: str | None = None,
 ) -> dict:
     pool = await get_pool()
     async with pool.acquire() as conn:
@@ -54,12 +72,14 @@ async def insert_site_event(
             INSERT INTO public.site_events (
                 event, visitor_id, session_id, user_id, path, referrer,
                 utm_source, utm_medium, utm_campaign, utm_term, utm_content,
-                user_agent, ip, language, timezone, screen_w, screen_h, meta
+                user_agent, ip, language, timezone, screen_w, screen_h, meta,
+                source, app_version
             )
             VALUES (
                 $1, $2, $3, $4, $5, $6,
                 $7, $8, $9, $10, $11,
-                $12, $13, $14, $15, $16, $17, $18::jsonb
+                $12, $13, $14, $15, $16, $17, $18::jsonb,
+                $19, $20
             )
             RETURNING id, event, created_at
             """,
@@ -81,6 +101,8 @@ async def insert_site_event(
             screen_w,
             screen_h,
             json.dumps(meta or {}),
+            source,
+            app_version,
         )
     if not row:
         raise RuntimeError("site_events insert returned no row")
