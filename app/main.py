@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from fastapi import FastAPI, HTTPException, Depends, Header, Query, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Request
+from fastapi import FastAPI, HTTPException, Depends, Header, Query, UploadFile, File, Form, WebSocket, WebSocketDisconnect, Request, BackgroundTasks
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from typing import Optional
@@ -36,6 +36,11 @@ from modules.interview import (
     get_session_prompt_context,
 )
 from modules.launch_signup import insert_launch_signup
+from modules.analytics import (
+    ALLOWED_EVENTS,
+    insert_site_event,
+    update_event_geo,
+)
 from modules.database import fetch_one, get_pool
 from modules.billing import (
     FREE_SESSION_LIMIT,
@@ -176,6 +181,24 @@ class LaunchSignupRequest(BaseModel):
     phone: str
     name: str
     profession: str
+
+
+class TrackEventRequest(BaseModel):
+    event: str = Field(..., description="One of: page_view, download_click")
+    path: Optional[str] = None
+    referrer: Optional[str] = None
+    visitor_id: Optional[str] = None
+    session_id: Optional[str] = None
+    utm_source: Optional[str] = None
+    utm_medium: Optional[str] = None
+    utm_campaign: Optional[str] = None
+    utm_term: Optional[str] = None
+    utm_content: Optional[str] = None
+    language: Optional[str] = None
+    timezone: Optional[str] = None
+    screen_w: Optional[int] = None
+    screen_h: Optional[int] = None
+    meta: Optional[dict] = None
 
 
 class EndSessionRequest(BaseModel):
@@ -340,6 +363,87 @@ async def launch_signup(request: LaunchSignupRequest):
         "profession": row["profession"],
         "created_at": row["created_at"].isoformat() if row.get("created_at") else None,
     }
+
+
+def _client_ip(request: Request) -> str | None:
+    """First hop of X-Forwarded-For (set by the proxy), else the socket peer."""
+    forwarded = request.headers.get("x-forwarded-for")
+    if forwarded:
+        first = forwarded.split(",")[0].strip()
+        if first:
+            return first
+    real_ip = request.headers.get("x-real-ip")
+    if real_ip:
+        return real_ip.strip()
+    return request.client.host if request.client else None
+
+
+async def _optional_user_id(authorization: str | None) -> str | None:
+    """Resolve a user_id if a valid Bearer token is present; never raises."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    try:
+        user_res = await get_user(authorization.split(" ", 1)[1])
+        return user_res.user.id if user_res and user_res.user else None
+    except Exception:
+        return None
+
+
+@app.post("/track")
+@limiter.limit("120/minute")
+async def track_site_event(
+    body: TrackEventRequest,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    authorization: str = Header(None),
+):
+    """
+    Record a marketing-site event (page view or download button click).
+
+    Public + anonymous: no auth required. If a Bearer token happens to be
+    present it is attached to the event, but an invalid one is ignored rather
+    than rejected — tracking must never break the page.
+    """
+    event = (body.event or "").strip()
+    if event not in ALLOWED_EVENTS:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Unknown event '{event}'. Allowed: {', '.join(ALLOWED_EVENTS)}",
+        )
+
+    ip = _client_ip(request)
+    user_id = await _optional_user_id(authorization)
+
+    try:
+        row = await insert_site_event(
+            event=event,
+            visitor_id=body.visitor_id,
+            session_id=body.session_id,
+            user_id=user_id,
+            path=body.path,
+            referrer=body.referrer,
+            utm_source=body.utm_source,
+            utm_medium=body.utm_medium,
+            utm_campaign=body.utm_campaign,
+            utm_term=body.utm_term,
+            utm_content=body.utm_content,
+            user_agent=request.headers.get("user-agent"),
+            ip=ip,
+            language=body.language,
+            timezone=body.timezone,
+            screen_w=body.screen_w,
+            screen_h=body.screen_h,
+            meta=body.meta,
+        )
+    except Exception:
+        logger.exception("track event insert failed (event=%s)", event)
+        # Analytics failures are never the visitor's problem.
+        return {"ok": False}
+
+    if ip:
+        background_tasks.add_task(update_event_geo, row["id"], ip)
+
+    return {"ok": True, "id": str(row["id"])}
 
 
 @app.post("/save_profile")

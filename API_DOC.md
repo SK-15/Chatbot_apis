@@ -794,6 +794,54 @@ Real-time audio transcription using Deepgram. Accepts raw audio bytes and stream
 
 ---
 
+### 32. Track Site Event (Analytics)
+Records a marketing-site event — a page visit or a download button click — together with the visitor's details. **Public and anonymous: no auth required.**
+
+*   **URL**: `/track`
+*   **Method**: `POST`
+*   **Headers**:
+    *   `Content-Type: application/json`
+    *   `Authorization: Bearer <access_token>` — *optional*. If a valid token is sent, `user_id` is attached to the event. An invalid token is **ignored**, not rejected.
+*   **Rate Limit**: 120 requests / minute per IP.
+*   **Request Body**:
+    ```json
+    {
+      "event": "page_view",
+      "path": "/?utm_source=google",
+      "referrer": "https://google.com",
+      "visitor_id": "b1f0...",
+      "session_id": "8c2a...",
+      "utm_source": "google",
+      "utm_medium": "cpc",
+      "utm_campaign": "launch",
+      "utm_term": null,
+      "utm_content": null,
+      "language": "en-IN",
+      "timezone": "Asia/Kolkata",
+      "screen_w": 1920,
+      "screen_h": 1080,
+      "meta": {}
+    }
+    ```
+    *   `event`: **Required**. One of `page_view` or `download_click`. Anything else is rejected.
+    *   `visitor_id`: Browser-generated UUID kept in `localStorage` — stable across visits.
+    *   `session_id`: Browser-generated UUID kept in `sessionStorage` — one per tab session.
+    *   `meta`: Free-form JSON. The download button sends `{ "href": ..., "label": ..., "id": ... }`.
+    *   Every other field is optional.
+*   **Captured server-side** (not sent by the client):
+    *   `ip` — first hop of `X-Forwarded-For`, else `X-Real-IP`, else the socket peer.
+    *   `user_agent` — from the request header.
+    *   `country` / `region` / `city` — resolved from the IP in a **background task** (never blocks the response), cached per-IP for 24h.
+*   **Success Response**:
+    *   **Code**: 200 OK
+    *   **Content**: `{ "ok": true, "id": "uuid" }`
+*   **Error Responses**:
+    *   **Code**: 422 Unprocessable Entity — unknown `event` value.
+    *   **Code**: 429 Too Many Requests — rate limit exceeded.
+    *   A database failure returns **200** with `{ "ok": false }` — analytics must never break the page.
+
+---
+
 ## Testing with cURL
 
 ### Signup
