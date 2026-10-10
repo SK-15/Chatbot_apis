@@ -42,6 +42,7 @@ from modules.analytics import (
     insert_site_event,
     update_event_geo,
 )
+from modules.admin_stats import get_admin_stats
 from modules.database import fetch_one, get_pool
 from modules.billing import (
     FREE_SESSION_LIMIT,
@@ -632,6 +633,19 @@ async def admin_adjust_user_sessions(
         raise HTTPException(status_code=404, detail="User not found")
 
     return await adjust_user_sessions(target_user_id, body.delta)
+
+
+@app.get("/admin/stats")
+async def admin_stats(
+    days: int = Query(30, ge=1, le=365, description="Size of the reporting window in days."),
+    _admin_id: str = Depends(require_admin),
+):
+    """
+    Aggregates behind the admin dashboard: acquisition funnel, daily trend,
+    revenue and traffic detail. **Admin-only** — `role = 'admin'` on the
+    caller's neon_auth user.
+    """
+    return await get_admin_stats(days)
 
 
 @app.get("/subscription/purchases")

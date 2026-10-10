@@ -847,6 +847,59 @@ Records a marketing-site event — a page visit or a download button click — t
 
 ---
 
+### 33. Admin — Dashboard Stats
+**Admin-only.** Everything behind the admin dashboard at `/admin` on the website: acquisition funnel, daily trend, revenue and traffic. Read-only.
+
+*   **URL**: `/admin/stats`
+*   **Method**: `GET`
+*   **Headers**:
+    *   `Authorization: Bearer <access_token>` (must belong to an admin — `role = 'admin'` on the caller's `neon_auth."user"` row)
+*   **Query Parameters**:
+    *   `days`: Optional, default `30`, range `1`–`365`. Size of the reporting window.
+*   **Success Response**:
+    *   **Code**: 200 OK
+    *   **Content**:
+        ```json
+        {
+          "generated_at": "2026-10-10T15:21:29+00:00",
+          "range_days": 30,
+          "tracking_started_on": "2026-09-12",
+          "totals": {
+            "users": 105, "users_new_7d": 4, "users_new_window": 21,
+            "sessions": 159, "sessions_window": 19, "sessions_ended": 1,
+            "avg_session_seconds": 40, "page_views": 278, "downloads": 34
+          },
+          "funnel": {
+            "visitors": 248, "download_clicks": 34, "unique_downloaders": 25,
+            "signups": 21, "sessions_started": 19,
+            "rates": { "visitor_to_download": 10.1, "download_to_signup": 84.0, "signup_to_session": 90.5 }
+          },
+          "timeseries": [ { "date": "2026-10-09", "signups": 1, "visitors": 24, "downloads": 1, "sessions": 2 } ],
+          "revenue": {
+            "total_paise": 309700, "paying_users": 3,
+            "by_plan": [ { "plan_id": "starter", "purchases": 2, "amount_paise": 159800, "sessions_sold": 14 } ]
+          },
+          "traffic": {
+            "referrers": [ { "referrer": "direct", "views": 209 } ],
+            "pages":     [ { "path": "/", "views": 180 } ],
+            "campaigns": [ { "utm_source": "google", "utm_medium": "cpc", "utm_campaign": "launch", "views": 4 } ],
+            "countries": [ { "country": "India", "visitors": 58 } ]
+          },
+          "app_events": [ { "event": "session_start", "n": 12, "installs": 3 } ]
+        }
+        ```
+*   **Notes**:
+    *   `timeseries` is zero-filled across the whole window, so a quiet day is a `0` rather than a missing entry.
+    *   `totals.users`, `totals.sessions` and the whole `revenue` block are all-time. Everything else is scoped to `days`.
+    *   Website figures only exist from `tracking_started_on` onward; earlier traffic was never recorded. `app_events` stays empty until a desktop build carrying analytics is released.
+    *   Amounts are **paise** (`309700` = ₹3,097).
+*   **Error Responses**:
+    *   **Code**: 403 Forbidden — `{ "detail": "admin_required" }` (caller is not an admin)
+    *   **Code**: 401 Unauthorized — missing/invalid token
+    *   **Code**: 422 Unprocessable Entity — `days` outside 1–365
+
+---
+
 ## Testing with cURL
 
 ### Signup
