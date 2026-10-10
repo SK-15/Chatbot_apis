@@ -3,7 +3,7 @@
 This API provides authentication via Supabase and streaming chat responses from OpenAI and Gemini.
 
 ## Base URL
-- **Production**: `https://adcrkz336r.ap-south-1.awsapprunner.com`
+- **Production**: `https://chatbot-apis-deo7.onrender.com`
 - **Local**: `http://localhost:8000`
 
 ## Security
@@ -98,6 +98,37 @@ Authenticate a user and receive access tokens.
 *   **Error Responses**:
     *   **Code**: 401 `{"detail": "invalid_credentials"}` (wrong email or password — intentionally indistinct)
     *   **Code**: 429 Too Many Requests (rate limit exceeded)
+
+### 2a. Google Sign-In (mobile / native app)
+Sign in with Google from a native mobile app. The app obtains a Google **`id_token`** on-device using the Google Sign-In SDK (Android/iOS) and posts it here. The backend verifies the token against Google's public certificates (signature, `iss`, `aud`, expiry), find-or-creates the user, and returns the same unified session tokens as `/login`.
+
+*   **URL**: `/auth/google/mobile`
+*   **Method**: `POST`
+*   **Request Body**:
+    ```json
+    {
+      "id_token": "google-id-token-string"
+    }
+    ```
+    *   `id_token`: **Required**. The `idToken` returned by the Google Sign-In SDK on-device.
+*   **Success Response**:
+    *   **Code**: 200 OK
+    *   **Content**:
+        ```json
+        {
+          "access_token": "jwt-token-string",
+          "refresh_token": "refresh-token-string",
+          "user_id": "uuid-string"
+        }
+        ```
+        The returned tokens behave exactly like those from `/login`: refresh via `/refresh` and revoke via `/logout`.
+*   **Error Responses**:
+    *   **Code**: 401 `{"detail": "invalid_id_token"}` (or a specific reason such as `invalid_audience`, `invalid_issuer`, `email_not_verified`)
+    *   **Code**: 422 `{"detail": "id_token is required"}`
+*   **Configuration**: Set the native OAuth client IDs in the environment so their values are accepted as the token's `aud`:
+    *   `GOOGLE_ANDROID_CLIENT_ID` — Android OAuth client ID (registered with the app's SHA-1 fingerprint).
+    *   `GOOGLE_IOS_CLIENT_ID` — iOS OAuth client ID (registered with the app's bundle ID).
+    *   `GOOGLE_CLIENT_ID` is also accepted (useful when the app requests an id_token for a Web/server client ID).
 
 ### 3. Refresh session tokens
 Exchange a **refresh token** for new `access_token` / `refresh_token` values. Neon Auth (email/password) and the app’s Google OAuth (Electron loopback) use different refresh tokens; set `provider` or use the default `auto` behavior.

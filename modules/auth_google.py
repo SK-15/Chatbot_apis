@@ -1,9 +1,13 @@
+import asyncio
 import urllib.parse
 
 import httpx
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import RedirectResponse
 from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from google.auth.transport import requests as google_requests
+from google.oauth2 import id_token as google_id_token
+from pydantic import BaseModel
 
 from modules.config import settings
 from modules.database import fetch_one, execute
@@ -290,3 +294,81 @@ async def google_callback(
         "user_id":       user["id"],
     })
     return RedirectResponse(f"http://127.0.0.1:{local_port}/callback?{params}", status_code=302)
+
+
+def _accepted_mobile_audiences() -> list[str]:
+    """Client IDs accepted as the `aud` of a native Google Sign-In id_token."""
+    candidates = [
+        settings.google_android_client_id,
+        settings.google_ios_client_id,
+        settings.google_client_id,
+    ]
+    return [c for c in candidates if c]
+
+
+def _verify_google_id_token(token: str) -> dict:
+    """
+    Verify a Google-issued id_token from the native Sign-In SDK.
+
+    Validates the signature against Google's public certs and checks `iss`,
+    `aud` (against the configured native client IDs) and expiry. Returns the
+    decoded claims, or raises ValueError on any failure.
+    """
+    audiences = _accepted_mobile_audiences()
+    if not audiences:
+        raise ValueError("no_mobile_client_id_configured")
+
+    claims = google_id_token.verify_oauth2_token(
+        token,
+        google_requests.Request(),
+        audience=None,
+    )
+
+    if claims.get("iss") not in ("accounts.google.com", "https://accounts.google.com"):
+        raise ValueError("invalid_issuer")
+    if claims.get("aud") not in audiences:
+        raise ValueError("invalid_audience")
+    if not claims.get("email"):
+        raise ValueError("no_email")
+    if claims.get("email_verified") is False:
+        raise ValueError("email_not_verified")
+    return claims
+
+
+class GoogleMobileRequest(BaseModel):
+    id_token: str
+
+
+@router.post("/auth/google/mobile")
+async def google_mobile(body: GoogleMobileRequest):
+    """
+    Native mobile Google Sign-In.
+
+    The app obtains an `id_token` on-device via the Google Sign-In SDK and posts
+    it here. The backend verifies the token, find-or-creates the user, and
+    returns the same unified session tokens as the other auth flows.
+    """
+    token = (body.id_token or "").strip()
+    if not token:
+        raise HTTPException(status_code=422, detail="id_token is required")
+
+    try:
+        claims = await asyncio.to_thread(_verify_google_id_token, token)
+    except ValueError as exc:
+        raise HTTPException(status_code=401, detail=str(exc))
+    except Exception:
+        raise HTTPException(status_code=401, detail="invalid_id_token")
+
+    email = claims.get("email")
+    name = claims.get("name", "")
+    image = claims.get("picture", "")
+
+    user = await _find_or_create_user(email=email, name=name, image=image)
+    access_token = mint_access_token(user["id"], user["email"])
+    refresh_token = await issue_refresh_token(user["id"])
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "user_id": user["id"],
+    }

@@ -16,6 +16,10 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     google_redirect_uri: str = ""
     google_redirect_uri_web: str = ""
+    # Native mobile OAuth client IDs (used as accepted `aud` values when
+    # verifying the id_token from the Google Sign-In SDK).
+    google_android_client_id: str = ""
+    google_ios_client_id: str = ""
     app_secret_key: str = ""
     cors_origins: str = "https://cogniv.co.in,https://www.cogniv.co.in"
     razorpay_key_id: str = ""

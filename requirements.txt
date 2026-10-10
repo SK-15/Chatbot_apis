@@ -18,5 +18,6 @@ pymupdf
 python-docx
 httpx
 itsdangerous
+google-auth
 razorpay>=1.4.0
 slowapi>=0.1.9
