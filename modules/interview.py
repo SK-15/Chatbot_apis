@@ -172,7 +172,7 @@ async def get_open_interview_session(user_id: str) -> UUID | None:
                 SELECT id
                 FROM public.interview_sessions
                 WHERE user_id = $1::uuid AND ended_at IS NULL
-                ORDER BY created_at DESC
+                ORDER BY started_at DESC
                 LIMIT 1
                 """,
                 user_id,
